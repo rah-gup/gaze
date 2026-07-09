@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gaze</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="intro">
+      <h1>Meet an agent that looks at you.</h1>
+      <p class="privacy">Everything runs on your device; the camera feed never leaves your browser.</p>
+    </header>
+
+    <section id="start-section" class="start-section">
+      <button id="camera-btn" type="button">Turn on camera</button>
+    </section>
+
+    <section id="demo-section" class="demo-section hidden">
+      <div id="eyes-container" aria-label="Agent eyes"></div>
+
+      <div class="preset-carousel" aria-label="Eye style">
+        <button id="preset-prev" type="button" aria-label="Previous eye style">←</button>
+        <span id="preset-label">Classic</span>
+        <button id="preset-next" type="button" aria-label="Next eye style">→</button>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="gaze-toggle" checked />
+        <span>Gaze cue on</span>
+      </label>
+
+      <p id="fallback-notice" class="fallback-notice hidden">Using mouse instead of camera.</p>
+    </section>
+
+    <footer class="explainer">
+      <p>
+        This is the eye-gaze cue I studied. In a VR experiment (n=27), adding it raised trust in an autonomous robot 36% over baseline.
+        <a href="https://ieeexplore.ieee.org/abstract/document/11396701" target="_blank" rel="noopener noreferrer">Read the paper</a>.
+      </p>
+    </footer>
+  </main>
+
+  <video id="webcam" autoplay playsinline muted hidden></video>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
