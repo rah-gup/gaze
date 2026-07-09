@@ -63,15 +63,21 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   width: 100%;
 }
 
 .hidden { display: none !important; }
 
+.agent-stage {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 280 / 520;
+}
+
 #eyes-container {
   width: 100%;
-  max-width: 400px;
 }
 
 #eyes-container svg {
@@ -80,19 +86,52 @@ h1 {
   display: block;
 }
 
-.sclera { fill: none; stroke: var(--fg); stroke-width: 2; }
+.body-fill {
+  fill: var(--bg);
+  stroke: none;
+}
+
+.body-outline {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sclera { fill: var(--bg); stroke: var(--fg); stroke-width: 2; }
 .pupil { fill: var(--fg); }
+.pupil-ring { stroke: var(--fg); }
 .lid { fill: var(--bg); }
 .brow { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linecap: round; }
 .lash { stroke: var(--fg); stroke-width: 1.5; stroke-linecap: round; }
+
+.agent-controls {
+  position: absolute;
+  bottom: 40%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 72%;
+  pointer-events: none;
+}
+
+.agent-controls > * {
+  pointer-events: auto;
+}
 
 .toggle {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   cursor: pointer;
   user-select: none;
+  background: var(--bg);
+  padding: 4px 8px;
 }
 
 .toggle input {
@@ -104,15 +143,18 @@ h1 {
 .preset-carousel {
   display: flex;
   align-items: center;
-  gap: 16px;
-  font-size: 0.875rem;
+  gap: 12px;
+  font-size: 0.8125rem;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  padding: 6px 10px;
 }
 
 .preset-carousel button {
   font-family: var(--font);
-  font-size: 0.875rem;
-  width: 36px;
-  height: 36px;
+  font-size: 0.8125rem;
+  width: 28px;
+  height: 28px;
   padding: 0;
   background: var(--bg);
   color: var(--fg);
@@ -125,6 +167,6 @@ h1 {
 .preset-carousel button:hover { opacity: 0.7; }
 
 #preset-label {
-  min-width: 72px;
+  min-width: 64px;
   text-align: center;
 }

@@ -1,4 +1,5 @@
-import { TARGET_LERP, TARGET_LERP_REDUCED } from './constants.js';
+import { TARGET_LERP, TARGET_LERP_REDUCED, CONFUSION } from './constants.js';
+import { getFaceCenter } from './agentBody.js';
 import { EYE_PRESETS } from './eyePresets.js';
 import { createEyes, updateEyes, applyPreset } from './eyes.js';
 import { initFaceDetector, startCamera, detectFace, initMouseTracking, setMouseTrackingEnabled } from './tracking.js';
@@ -15,15 +16,20 @@ const presetNext = document.getElementById('preset-next');
 const presetLabel = document.getElementById('preset-label');
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const faceCenter = getFaceCenter();
 
-const target = { x: 200, y: 100 };
-const rawTarget = { x: 200, y: 100 };
+const target = { x: faceCenter.x, y: faceCenter.y };
+const rawTarget = { x: faceCenter.x, y: faceCenter.y };
+let lastRawSpeed = 0;
+let lastRawSpeedAt = 0;
+let lastRawUpdateAt = performance.now();
 let gazeOn = true;
 let eyeState = null;
 let lastVideoTime = -1;
 let lastFaceSeenAt = 0;
 let usingCamera = false;
 let presetIndex = 0;
+let lastFrameTime = performance.now();
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -39,6 +45,7 @@ function showDemo(useMouseFallback) {
     gazeOn = gazeToggle.checked;
     gazeToggle.nextElementSibling.textContent = gazeOn ? 'Gaze cue on' : 'Gaze cue off';
   });
+  lastFrameTime = performance.now();
   loop();
 }
 
@@ -59,8 +66,15 @@ function initPresetCarousel() {
 }
 
 function onRawTarget({ x, y }) {
+  const now = performance.now();
+  const dt = Math.min(now - lastRawUpdateAt, 50);
+  if (dt > 0) {
+    lastRawSpeed = Math.hypot(x - rawTarget.x, y - rawTarget.y);
+    lastRawSpeedAt = now;
+  }
   rawTarget.x = x;
   rawTarget.y = y;
+  lastRawUpdateAt = now;
 }
 
 async function handleCameraStart() {
@@ -76,13 +90,15 @@ async function handleCameraStart() {
   } catch (err) {
     console.warn('Camera unavailable, falling back to mouse', err);
     initMouseTracking(onRawTarget);
-    onRawTarget({ x: 200, y: 100 });
+    onRawTarget({ x: faceCenter.x, y: faceCenter.y });
     showDemo(true);
   }
 }
 
 function loop() {
   const now = performance.now();
+  const deltaMs = Math.min(now - lastFrameTime, 50);
+  lastFrameTime = now;
   const lerpFactor = reducedMotion ? TARGET_LERP_REDUCED : TARGET_LERP;
 
   if (video.srcObject && video.currentTime !== lastVideoTime) {
@@ -100,12 +116,17 @@ function loop() {
   target.x = lerp(target.x, rawTarget.x, lerpFactor);
   target.y = lerp(target.y, rawTarget.y, lerpFactor);
 
+  const gazeSpeed =
+    now - lastRawSpeedAt < CONFUSION.speedStaleMs ? lastRawSpeed : 0;
+
   updateEyes(eyeState, {
     targetX: target.x,
     targetY: target.y,
     gazeOn,
     reducedMotion,
     now,
+    gazeSpeed,
+    deltaMs,
   });
 
   requestAnimationFrame(loop);

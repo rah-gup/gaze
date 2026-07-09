@@ -1,7 +1,11 @@
-import { FaceDetector, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs';
+import { getSvgDimensions } from './agentBody.js';
 
-let faceDetector = null;
+let faceLandmarker = null;
 let mouseEnabled = true;
+
+// Nose tip — stable anchor for gaze direction
+const NOSE_TIP = 1;
 
 export function setMouseTrackingEnabled(enabled) {
   mouseEnabled = enabled;
@@ -9,14 +13,16 @@ export function setMouseTrackingEnabled(enabled) {
 
 export async function initFaceDetector() {
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
   );
-  faceDetector = await FaceDetector.createFromOptions(vision, {
+  faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
       delegate: 'GPU',
     },
     runningMode: 'VIDEO',
+    numFaces: 1,
   });
 }
 
@@ -31,24 +37,19 @@ export async function startCamera(videoEl) {
 }
 
 export function detectFace(videoEl, timestampMs) {
-  if (!faceDetector || videoEl.readyState < 2) return null;
+  if (!faceLandmarker || videoEl.readyState < 2) return null;
 
-  const result = faceDetector.detectForVideo(videoEl, timestampMs);
-  if (!result.detections.length) return null;
+  const result = faceLandmarker.detectForVideo(videoEl, timestampMs);
+  if (!result.faceLandmarks.length) return null;
 
-  const box = result.detections[0].boundingBox;
+  const nose = result.faceLandmarks[0][NOSE_TIP];
   const videoW = videoEl.videoWidth;
   const videoH = videoEl.videoHeight;
-  const svgW = 400;
-  const svgH = 200;
-
-  const cx = box.originX + box.width / 2;
-  const cy = box.originY + box.height / 2;
+  const { w: svgW, h: svgH } = getSvgDimensions();
 
   return {
-    x: (1 - cx / videoW) * svgW,
-    y: (cy / videoH) * svgH,
-    faceSize: box.width * box.height,
+    x: (1 - nose.x) * svgW,
+    y: nose.y * svgH,
   };
 }
 
@@ -60,8 +61,7 @@ export function initMouseTracking(onMove) {
     if (!container) return;
 
     const rect = container.getBoundingClientRect();
-    const svgW = 400;
-    const svgH = 200;
+    const { w: svgW, h: svgH } = getSvgDimensions();
     const x = ((e.clientX - rect.left) / rect.width) * svgW;
     const y = ((e.clientY - rect.top) / rect.height) * svgH;
     onMove({ x, y, source: 'mouse' });

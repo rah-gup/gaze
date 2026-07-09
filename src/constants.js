@@ -4,19 +4,18 @@ export const COLORS = {
 };
 
 export const EYE = {
-  viewBox: { w: 400, h: 200 },
+  viewBox: { w: 280, h: 520 },
+  faceCenterY: 120,
 };
 
-// How far the target can be from center before pupils reach max deflection.
-// Larger range = subtler, more "looking at you" instead of staring into the distance.
 export const GAZE = {
   range: 110,
   maxOffset: 8,
   centerDeadzone: 6,
 };
 
-export const TARGET_LERP = 0.22;
-export const PUPIL_LERP = 0.32;
+export const TARGET_LERP = 0.38;
+export const PUPIL_LERP = 0.48;
 export const TARGET_LERP_REDUCED = 0.14;
 export const PUPIL_LERP_REDUCED = 0.18;
 
@@ -32,3 +31,17 @@ export const IDLE = {
 };
 
 export const GAZE_OFF_OFFSET = { x: -4, y: 5 };
+
+// Fast head movement → pupils shrink after sustained movement (cartoon "confused" effect)
+export const CONFUSION = {
+  speedThreshold: 4,
+  sustainMs: 1000,
+  rampMs: 600,
+  decayMs: 1000,
+  minPupilScale: 0.32,
+  shrinkLerp: 0.22,
+  recoverLerp: 0.06,
+  wobbleMax: 1.8,
+  browLiftMax: 5,
+  speedStaleMs: 60,
+};

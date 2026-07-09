@@ -18,18 +18,22 @@
     </section>
 
     <section id="demo-section" class="demo-section hidden">
-      <div id="eyes-container" aria-label="Agent eyes"></div>
+      <div class="agent-stage">
+        <div id="eyes-container" aria-label="Gaze agent"></div>
 
-      <div class="preset-carousel" aria-label="Eye style">
-        <button id="preset-prev" type="button" aria-label="Previous eye style">←</button>
-        <span id="preset-label">Classic</span>
-        <button id="preset-next" type="button" aria-label="Next eye style">→</button>
+        <div class="agent-controls">
+          <div class="preset-carousel" aria-label="Eye style">
+            <button id="preset-prev" type="button" aria-label="Previous eye style">←</button>
+            <span id="preset-label">Classic</span>
+            <button id="preset-next" type="button" aria-label="Next eye style">→</button>
+          </div>
+
+          <label class="toggle">
+            <input type="checkbox" id="gaze-toggle" checked />
+            <span>Gaze cue on</span>
+          </label>
+        </div>
       </div>
-
-      <label class="toggle">
-        <input type="checkbox" id="gaze-toggle" checked />
-        <span>Gaze cue on</span>
-      </label>
 
       <p id="fallback-notice" class="fallback-notice hidden">Using mouse instead of camera.</p>
     </section>
