@@ -19,10 +19,13 @@ export const PUPIL_LERP = 0.48;
 export const TARGET_LERP_REDUCED = 0.14;
 export const PUPIL_LERP_REDUCED = 0.18;
 
-export const BLINK = {
-  minInterval: 3000,
-  maxInterval: 7000,
-  duration: 120,
+export const EYE_LIFE = {
+  wakeMs: 500,
+  sleepMs: 500,
+  blinkCloseMs: 380,
+  blinkOpenMs: 380,
+  pupilDropPx: 6,
+  idleBlinkMs: 7000,
 };
 
 export const IDLE = {

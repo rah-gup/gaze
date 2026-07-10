@@ -84,6 +84,16 @@ h1 {
   width: 100%;
   height: auto;
   display: block;
+  overflow: visible;
+}
+
+.body-shape {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  paint-order: stroke fill;
 }
 
 .body-fill {
@@ -99,11 +109,19 @@ h1 {
   stroke-linejoin: round;
 }
 
+.ear-shape {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+
 .sclera { fill: var(--bg); stroke: var(--fg); stroke-width: 2; }
 .pupil { fill: var(--fg); }
 .pupil-ring { stroke: var(--fg); }
-.lid { fill: var(--bg); }
-.brow { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linecap: round; }
+.top-lid { fill: var(--fg); stroke: none; }
+.brow { fill: none; stroke: var(--fg); stroke-linecap: round; }
 .lash { stroke: var(--fg); stroke-width: 1.5; stroke-linecap: round; }
 
 .agent-controls {

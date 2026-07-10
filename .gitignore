@@ -11,6 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+.vercel
+
+# Agent deploy artifacts (never commit)
+.deploy-*
+.mcp-*
+.files-chunk*
+*-deploy-args*
+deploy-args*.cjs
+mcp-deploy-runner.mjs
 
 # Editor directories and files
 .vscode/*

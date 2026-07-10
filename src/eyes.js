@@ -1,5 +1,5 @@
 import {
-  EYE, GAZE, GAZE_OFF_OFFSET, BLINK, IDLE,
+  EYE, GAZE, IDLE, EYE_LIFE,
   PUPIL_LERP, PUPIL_LERP_REDUCED, CONFUSION,
 } from './constants.js';
 import { EYE_PRESETS } from './eyePresets.js';
@@ -21,10 +21,16 @@ function getEyeCenters(preset) {
 
 function getEyeDims(preset, side) {
   const override = side === 'left' ? preset.leftEye : preset.rightEye;
+  const scleraRx = override?.scleraRx ?? preset.scleraRx;
+  const scleraRy = override?.scleraRy ?? preset.scleraRy;
   return {
-    scleraRx: override?.scleraRx ?? preset.scleraRx,
-    scleraRy: override?.scleraRy ?? preset.scleraRy,
+    scleraRx,
+    scleraRy,
     pupilR: override?.pupilR ?? preset.pupilR,
+    clipCx: 0,
+    clipCy: 0,
+    clipRx: scleraRx,
+    clipRy: scleraRy,
   };
 }
 
@@ -33,15 +39,18 @@ export function createEyes(container, preset = EYE_PRESETS[0]) {
 
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${EYE.viewBox.w} ${EYE.viewBox.h}`);
+  svg.setAttribute('overflow', 'visible');
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', 'Gaze agent');
 
-  const { bodyGroup, hairGroup } = createAgentLayers(svg);
+  const { bodyGroup, earsGroup, hairGroup } = createAgentLayers();
+
+  svg.appendChild(earsGroup);
+  svg.appendChild(bodyGroup);
 
   const faceGroup = document.createElementNS(NS, 'g');
   faceGroup.setAttribute('class', 'face');
   svg.appendChild(faceGroup);
-
   svg.appendChild(hairGroup);
 
   const state = {
@@ -51,9 +60,16 @@ export function createEyes(container, preset = EYE_PRESETS[0]) {
     pupilScale: 1,
     confusion: 0,
     fastMoveMs: 0,
-    prevGaze: { x: 0, y: 0 },
-    blinkProgress: 0,
-    nextBlinkAt: performance.now() + randomBlinkDelay(),
+    hadConfusion: false,
+    blinkOpenAmount: 1,
+    blinkPhase: null,
+    blinkStart: 0,
+    blinkFromOpen: 1,
+    nextBlinkAt: performance.now() + EYE_LIFE.idleBlinkMs,
+    pendingRecoveryBlink: false,
+    openAmount: 0,
+    wakeSleepStart: null,
+    wasGazeOn: false,
     elements: {},
     bodyGroup,
     faceGroup,
@@ -74,11 +90,21 @@ function buildEyeGroup(id) {
   const g = document.createElementNS(NS, 'g');
   g.setAttribute('class', `eye eye-${id}`);
 
-  const brow = document.createElementNS(NS, 'path');
-  brow.setAttribute('class', 'brow');
+  const defs = document.createElementNS(NS, 'defs');
+  const clipPath = document.createElementNS(NS, 'clipPath');
+  const clipId = `eyeClip-${id}`;
+  clipPath.setAttribute('id', clipId);
 
-  const lashGroup = document.createElementNS(NS, 'g');
-  lashGroup.setAttribute('class', 'lashes');
+  const clipShape = document.createElementNS(NS, 'ellipse');
+  clipShape.setAttribute('cx', '0');
+  clipShape.setAttribute('cy', '0');
+  clipPath.appendChild(clipShape);
+  defs.appendChild(clipPath);
+  g.appendChild(defs);
+
+  const clipped = document.createElementNS(NS, 'g');
+  clipped.setAttribute('class', 'eye-clipped');
+  clipped.setAttribute('clip-path', `url(#${clipId})`);
 
   const sclera = document.createElementNS(NS, 'ellipse');
   sclera.setAttribute('class', 'sclera');
@@ -96,24 +122,42 @@ function buildEyeGroup(id) {
   pupilGroup.appendChild(pupilRing);
   pupilGroup.appendChild(pupil);
 
-  const lid = document.createElementNS(NS, 'rect');
-  lid.setAttribute('class', 'lid');
-  lid.setAttribute('height', '0');
-  lid.setAttribute('opacity', '0');
+  const topLid = document.createElementNS(NS, 'rect');
+  topLid.setAttribute('class', 'top-lid');
+  topLid.setAttribute('height', '0');
 
-  g.appendChild(sclera);
-  g.appendChild(pupilGroup);
+  clipped.appendChild(sclera);
+  clipped.appendChild(pupilGroup);
+  clipped.appendChild(topLid);
+
+  const lashGroup = document.createElementNS(NS, 'g');
+  lashGroup.setAttribute('class', 'lashes');
+
+  const brow = document.createElementNS(NS, 'path');
+  brow.setAttribute('class', 'brow');
+
+  g.appendChild(clipped);
   g.appendChild(lashGroup);
   g.appendChild(brow);
-  g.appendChild(lid);
 
-  return { group: g, brow, lashes: lashGroup, sclera, pupilGroup, pupil, pupilRing, lid, id };
+  return {
+    group: g,
+    clipShape,
+    clipped,
+    brow,
+    lashes: lashGroup,
+    sclera,
+    pupilGroup,
+    pupil,
+    pupilRing,
+    topLid,
+    id,
+  };
 }
 
 export function applyPreset(eyeState, preset) {
   eyeState.preset = preset;
   eyeState.centers = getEyeCenters(preset);
-
   const sides = preset.mono ? ['left'] : ['left', 'right'];
 
   for (const id of ['left', 'right']) {
@@ -127,20 +171,41 @@ export function applyPreset(eyeState, preset) {
     const dims = getEyeDims(preset, id);
 
     eye.group.setAttribute('transform', `translate(${center.x}, ${center.y})`);
-    eye.sclera.setAttribute('rx', dims.scleraRx);
-    eye.sclera.setAttribute('ry', dims.scleraRy);
+
+    eye.clipShape.setAttribute('cx', dims.clipCx);
+    eye.clipShape.setAttribute('cy', dims.clipCy);
+    eye.clipShape.setAttribute('rx', dims.clipRx);
+    eye.clipShape.setAttribute('ry', dims.clipRy);
+
+    eye.sclera.setAttribute('cx', dims.clipCx);
+    eye.sclera.setAttribute('cy', dims.clipCy);
+    eye.sclera.setAttribute('rx', dims.clipRx);
+    eye.sclera.setAttribute('ry', dims.clipRy);
+
     eye.basePupilR = dims.pupilR;
+    pupilGroupOffset(eye.pupilGroup, 0, 0);
 
-    eye.lid.setAttribute('x', -dims.scleraRx);
-    eye.lid.setAttribute('y', -dims.scleraRy);
-    eye.lid.setAttribute('width', dims.scleraRx * 2);
-
+    setTopLid(eye.topLid, dims, 0);
     updateBrow(eye.brow, preset, id, dims, 0);
     updateLashes(eye.lashes, preset, dims);
     updatePupilStyle(eye, preset, dims.pupilR, eyeState.pupilScale);
   }
 
   eyeState.svg.setAttribute('aria-label', `${preset.label} gaze agent`);
+}
+
+function pupilGroupOffset(pupilGroup, cx, cy) {
+  pupilGroup.dataset.baseCx = cx;
+  pupilGroup.dataset.baseCy = cy;
+}
+
+function setTopLid(lidEl, dims, coverage) {
+  const c = Math.min(Math.max(coverage, 0), 1);
+  lidEl.setAttribute('x', dims.clipCx - dims.clipRx);
+  lidEl.setAttribute('y', dims.clipCy - dims.clipRy);
+  lidEl.setAttribute('width', dims.clipRx * 2);
+  lidEl.setAttribute('height', c * dims.clipRy * 2);
+  lidEl.setAttribute('opacity', c > 0.001 ? '1' : '0');
 }
 
 function updatePupilStyle(eye, preset, baseR, scale) {
@@ -156,9 +221,9 @@ function updatePupilStyle(eye, preset, baseR, scale) {
   }
 }
 
-function updateBrow(browEl, preset, side, dims, lift, wobble = 0) {
+function updateBrow(browEl, preset, side, dims, lift, wobble = 0, openness = 1) {
   const brow = preset.brow;
-  if (!brow || brow.style === 'none') {
+  if (!brow || brow.style === 'none' || openness <= 0) {
     browEl.setAttribute('opacity', '0');
     return;
   }
@@ -192,14 +257,15 @@ function updateBrow(browEl, preset, side, dims, lift, wobble = 0) {
   }
 
   browEl.setAttribute('d', d);
-  browEl.setAttribute('opacity', '1');
+  browEl.setAttribute('stroke-width', brow.weight ?? 2);
+  browEl.setAttribute('opacity', String(Math.min(openness, 1)));
 }
 
-function updateLashes(lashGroup, preset, dims) {
+function updateLashes(lashGroup, preset, dims, openness = 1) {
   lashGroup.innerHTML = '';
 
   const lashes = preset.lashes;
-  if (!lashes || lashes.style === 'none') return;
+  if (!lashes || lashes.style === 'none' || openness <= 0) return;
 
   const rx = dims.scleraRx;
   const ry = dims.scleraRy;
@@ -224,23 +290,111 @@ function updateLashes(lashGroup, preset, dims) {
     line.setAttribute('y1', y);
     line.setAttribute('x2', x + nx * length);
     line.setAttribute('y2', y + ny * length);
+    line.setAttribute('opacity', String(Math.min(openness, 1)));
     lashGroup.appendChild(line);
   }
 }
 
-function randomBlinkDelay() {
-  const { minInterval, maxInterval } = BLINK;
-  return minInterval + Math.random() * (maxInterval - minInterval);
+function easeOutCubic(t) {
+  return 1 - (1 - t) ** 3;
+}
+
+function easeLidAmount(from, to, elapsed, duration) {
+  const t = Math.min(elapsed / duration, 1);
+  return from + (to - from) * easeOutCubic(t);
+}
+
+function updateWakeSleep(eyeState, gazeOn, now, reducedMotion) {
+  if (gazeOn !== eyeState.wasGazeOn) {
+    eyeState.wakeSleepStart = now;
+    eyeState.wasGazeOn = gazeOn;
+    if (!gazeOn) {
+      eyeState.fastMoveMs = 0;
+      eyeState.hadConfusion = false;
+      eyeState.pendingRecoveryBlink = false;
+      eyeState.blinkPhase = null;
+      eyeState.blinkOpenAmount = 1;
+    }
+  }
+
+  const targetOpen = gazeOn ? 1 : 0;
+
+  if (reducedMotion) {
+    eyeState.openAmount = targetOpen;
+    return eyeState.openAmount >= 1;
+  }
+
+  if (eyeState.wakeSleepStart !== null) {
+    const duration = gazeOn ? EYE_LIFE.wakeMs : EYE_LIFE.sleepMs;
+    const elapsed = now - eyeState.wakeSleepStart;
+    const targetOpen = gazeOn ? 1 : 0;
+    const from = gazeOn ? 0 : eyeState.openAmount;
+    eyeState.openAmount = easeLidAmount(from, targetOpen, elapsed, duration);
+    if (elapsed >= duration) {
+      eyeState.wakeSleepStart = null;
+      eyeState.openAmount = targetOpen;
+      if (gazeOn) {
+        eyeState.nextBlinkAt = now + EYE_LIFE.idleBlinkMs;
+      }
+    }
+  } else {
+    eyeState.openAmount = gazeOn ? 1 : 0;
+  }
+
+  return eyeState.openAmount >= 0.999;
+}
+
+function updateIdleBlink(state, now, reducedMotion, confusion) {
+  if (state.wakeSleepStart !== null) {
+    return state.blinkOpenAmount;
+  }
+
+  if (state.pendingRecoveryBlink && state.blinkPhase === null) {
+    state.pendingRecoveryBlink = false;
+    state.blinkPhase = 'close';
+    state.blinkStart = now;
+    state.blinkFromOpen = state.blinkOpenAmount;
+  } else if (
+    state.blinkPhase === null
+    && confusion < 0.05
+    && now >= state.nextBlinkAt
+  ) {
+    state.blinkPhase = 'close';
+    state.blinkStart = now;
+    state.blinkFromOpen = state.blinkOpenAmount;
+  }
+
+  if (state.blinkPhase === 'close') {
+    const elapsed = now - state.blinkStart;
+    state.blinkOpenAmount = easeLidAmount(state.blinkFromOpen, 0, elapsed, EYE_LIFE.blinkCloseMs);
+    if (elapsed >= EYE_LIFE.blinkCloseMs) {
+      state.blinkPhase = 'open';
+      state.blinkStart = now;
+      state.blinkFromOpen = 0;
+    }
+  } else if (state.blinkPhase === 'open') {
+    const elapsed = now - state.blinkStart;
+    state.blinkOpenAmount = easeLidAmount(state.blinkFromOpen, 1, elapsed, EYE_LIFE.blinkOpenMs);
+    if (elapsed >= EYE_LIFE.blinkOpenMs) {
+      state.blinkPhase = null;
+      state.blinkOpenAmount = 1;
+      state.nextBlinkAt = now + (reducedMotion ? EYE_LIFE.idleBlinkMs * 2.5 : EYE_LIFE.idleBlinkMs);
+    }
+  }
+
+  return state.blinkOpenAmount;
 }
 
 export function updateEyes(eyeState, { targetX, targetY, gazeOn, reducedMotion, now, gazeSpeed, deltaMs }) {
-  const { gaze, elements, preset, bodyGroup } = eyeState;
+  const { gaze, preset, bodyGroup } = eyeState;
   const lerpFactor = reducedMotion ? PUPIL_LERP_REDUCED : PUPIL_LERP;
+  const fullyOpen = updateWakeSleep(eyeState, gazeOn, now, reducedMotion);
+  const openAmount = eyeState.openAmount;
 
-  let desiredGaze;
+  let desiredGaze = { x: 0, y: 0 };
   let confusion = 0;
 
-  if (gazeOn) {
+  if (gazeOn && fullyOpen) {
     desiredGaze = computeSharedGaze(targetX, targetY, eyeState.centers, preset);
 
     if (preset.gazeBias) {
@@ -270,42 +424,60 @@ export function updateEyes(eyeState, { targetX, targetY, gazeOn, reducedMotion, 
         (eyeState.fastMoveMs - CONFUSION.sustainMs) / CONFUSION.rampMs,
         1,
       );
+      eyeState.hadConfusion = true;
       const wobble = confusion * CONFUSION.wobbleMax;
       desiredGaze.x += (Math.random() - 0.5) * wobble;
       desiredGaze.y += (Math.random() - 0.5) * wobble;
     }
-
-    updateBlink(eyeState, now, reducedMotion);
-  } else {
-    desiredGaze = { ...GAZE_OFF_OFFSET };
-    confusion = 0;
-    eyeState.fastMoveMs = 0;
-    eyeState.blinkProgress = 0;
-    setLid(elements.left.lid, 0);
-    if (elements.right) setLid(elements.right.lid, 0);
   }
+
+  const blinkOpenAmount = gazeOn
+    ? updateIdleBlink(eyeState, now, reducedMotion, confusion)
+    : (eyeState.blinkPhase = null, eyeState.blinkOpenAmount = 1, 1);
+  const effectiveOpenAmount = Math.min(openAmount, blinkOpenAmount);
+  const lidCoverage = 1 - effectiveOpenAmount;
+  const isBlinking = eyeState.blinkPhase !== null;
 
   gaze.x += (desiredGaze.x - gaze.x) * lerpFactor;
   gaze.y += (desiredGaze.y - gaze.y) * lerpFactor;
 
-  const targetScale = gazeOn
+  const targetScale = gazeOn && fullyOpen
     ? 1 - confusion * (1 - CONFUSION.minPupilScale)
     : 1;
   const scaleLerp = confusion > eyeState.confusion ? CONFUSION.shrinkLerp : CONFUSION.recoverLerp;
   eyeState.pupilScale += (targetScale - eyeState.pupilScale) * scaleLerp;
   eyeState.confusion = confusion;
 
+  if (eyeState.hadConfusion && confusion < 0.05 && eyeState.pupilScale > 0.95) {
+    eyeState.pendingRecoveryBlink = true;
+    eyeState.hadConfusion = false;
+  }
+
   const browLift = confusion * CONFUSION.browLiftMax;
   const browWobble = confusion > 0.05
     ? (Math.random() - 0.5) * CONFUSION.wobbleMax * 2
     : 0;
-  const bodyWobble = confusion * CONFUSION.wobbleMax * 0.6;
+  const bodyWobble = gazeOn && fullyOpen ? confusion * CONFUSION.wobbleMax * 0.6 : 0;
   bodyGroup.setAttribute(
     'transform',
     `translate(${(Math.random() - 0.5) * bodyWobble}, ${(Math.random() - 0.5) * bodyWobble})`,
   );
 
-  applySharedGaze(eyeState, gaze, browLift, browWobble);
+  const wakeDrop = gazeOn && openAmount < 1 && !isBlinking
+    ? -(1 - openAmount) * EYE_LIFE.pupilDropPx
+    : 0;
+
+  applySharedGaze(
+    eyeState,
+    gaze,
+    browLift,
+    browWobble,
+    openAmount,
+    effectiveOpenAmount,
+    wakeDrop,
+    lidCoverage,
+    isBlinking,
+  );
 }
 
 function computeSharedGaze(targetX, targetY, centers, preset) {
@@ -331,53 +503,47 @@ function computeSharedGaze(targetX, targetY, centers, preset) {
   };
 }
 
-function applySharedGaze(eyeState, gaze, browLift, browWobble) {
+function applySharedGaze(
+  eyeState,
+  gaze,
+  browLift,
+  browWobble,
+  openAmount,
+  effectiveOpenAmount,
+  wakeDrop,
+  lidCoverage,
+  isBlinking,
+) {
   const { elements, preset, pupilScale } = eyeState;
-  const transform = `translate(${gaze.x}, ${gaze.y})`;
   const sides = preset.mono ? ['left'] : ['left', 'right'];
+  const facialOpenness = isBlinking ? 1 : openAmount;
 
   for (const id of sides) {
     const eye = elements[id];
-    eye.pupilGroup.setAttribute('transform', transform);
     const dims = getEyeDims(preset, id);
-    updatePupilStyle(eye, preset, dims.pupilR, pupilScale);
-    const sideWobble = id === 'left' ? browWobble : -browWobble * 0.7;
-    updateBrow(eye.brow, preset, id, dims, browLift, sideWobble);
-  }
-}
+    const px = gaze.x;
+    const py = gaze.y + wakeDrop;
+    eye.pupilGroup.setAttribute('transform', `translate(${px}, ${py})`);
 
-function updateBlink(state, now, reducedMotion) {
-  const intervalMultiplier = reducedMotion ? 2.5 : 1;
-  const preset = state.preset;
-  const sides = preset.mono ? ['left'] : ['left', 'right'];
-
-  if (state.blinkProgress === 0 && now >= state.nextBlinkAt) {
-    state.blinkStart = now;
-    state.blinkProgress = 0.001;
-  }
-
-  if (state.blinkProgress > 0) {
-    const elapsed = now - state.blinkStart;
-    const half = BLINK.duration / 2;
-    if (elapsed < half) {
-      state.blinkProgress = elapsed / half;
-    } else if (elapsed < BLINK.duration) {
-      state.blinkProgress = 1 - (elapsed - half) / half;
+    if (isBlinking && openAmount > 0.02) {
+      updatePupilStyle(eye, preset, dims.pupilR, pupilScale);
+      eye.pupilGroup.setAttribute('opacity', '1');
+    } else if (effectiveOpenAmount > 0.02) {
+      updatePupilStyle(eye, preset, dims.pupilR, pupilScale);
+      eye.pupilGroup.setAttribute(
+        'opacity',
+        lidCoverage < 0.98
+          ? String(Math.max(effectiveOpenAmount - lidCoverage * 0.5, 0))
+          : '1',
+      );
     } else {
-      state.blinkProgress = 0;
-      state.nextBlinkAt = now + randomBlinkDelay() * intervalMultiplier;
+      eye.pupilGroup.setAttribute('opacity', '0');
     }
 
-    for (const id of sides) {
-      const eye = state.elements[id];
-      const dims = getEyeDims(preset, id);
-      const lidHeight = state.blinkProgress * dims.scleraRy * 2;
-      setLid(eye.lid, lidHeight);
-    }
+    setTopLid(eye.topLid, dims, lidCoverage);
+
+    updateLashes(eye.lashes, preset, dims, facialOpenness);
+    const sideWobble = id === 'left' ? browWobble : -browWobble * 0.7;
+    updateBrow(eye.brow, preset, id, dims, browLift, sideWobble, facialOpenness);
   }
-}
-
-function setLid(lidEl, height) {
-  lidEl.setAttribute('height', height);
-  lidEl.setAttribute('opacity', height > 0 ? '1' : '0');
 }

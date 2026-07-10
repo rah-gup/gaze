@@ -1,4 +1,4 @@
-import { TARGET_LERP, TARGET_LERP_REDUCED, CONFUSION } from './constants.js';
+import { TARGET_LERP, TARGET_LERP_REDUCED, CONFUSION, EYE_LIFE } from './constants.js';
 import { getFaceCenter } from './agentBody.js';
 import { EYE_PRESETS } from './eyePresets.js';
 import { createEyes, updateEyes, applyPreset } from './eyes.js';
@@ -40,6 +40,7 @@ function showDemo(useMouseFallback) {
   demoSection.classList.remove('hidden');
   fallbackNotice.classList.toggle('hidden', !useMouseFallback);
   eyeState = createEyes(eyesContainer, EYE_PRESETS[presetIndex]);
+  eyeState.nextBlinkAt = performance.now() + EYE_LIFE.idleBlinkMs;
   initPresetCarousel();
   gazeToggle.addEventListener('change', () => {
     gazeOn = gazeToggle.checked;
