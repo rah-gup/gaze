@@ -68,11 +68,10 @@ function initPresetCarousel() {
 
 function onRawTarget({ x, y }) {
   const now = performance.now();
-  const dt = Math.min(now - lastRawUpdateAt, 50);
-  if (dt > 0) {
-    lastRawSpeed = Math.hypot(x - rawTarget.x, y - rawTarget.y);
-    lastRawSpeedAt = now;
-  }
+  const dt = Math.max(now - lastRawUpdateAt, 1);
+  const dist = Math.hypot(x - rawTarget.x, y - rawTarget.y);
+  lastRawSpeed = dist / dt;
+  lastRawSpeedAt = now;
   rawTarget.x = x;
   rawTarget.y = y;
   lastRawUpdateAt = now;

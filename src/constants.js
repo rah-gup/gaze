@@ -37,7 +37,7 @@ export const GAZE_OFF_OFFSET = { x: -4, y: 5 };
 
 // Fast head movement → pupils shrink after sustained movement (cartoon "confused" effect)
 export const CONFUSION = {
-  speedThreshold: 4,
+  speedThreshold: 0.1,
   sustainMs: 1000,
   rampMs: 600,
   decayMs: 1000,
@@ -46,5 +46,5 @@ export const CONFUSION = {
   recoverLerp: 0.06,
   wobbleMax: 1.8,
   browLiftMax: 5,
-  speedStaleMs: 60,
+  speedStaleMs: 150,
 };
